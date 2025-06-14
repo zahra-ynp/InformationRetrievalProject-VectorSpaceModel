@@ -1,4 +1,6 @@
 import math
+from collections import Counter
+
 
 def cosine_similarity(vec1, vec2):
     """
@@ -22,3 +24,38 @@ def cosine_similarity(vec1, vec2):
         return dot_product / (norm_vec1 * norm_vec2)
     else:
         return 0.0
+
+
+def rank_documents(query_tokens, document_vectors, idf_scores):
+    """
+    Ranks documents against a pre-processed query using cosine similarity.
+    We have a list of document vectors and a dictionary of IDF scores in artifacrt.
+    Returns a list of tuples, where each tuple contains (document_id, similarity_score) in descending order of score.
+    """
+    
+    # --- Step 1: Create the TF-IDF vector for the query ---
+    query_vector = {}
+    tf_counts = Counter(query_tokens)
+    
+    for term, tf in tf_counts.items():
+        if term in idf_scores:
+            # The query vector's weight for a term is its tf * the term's idf.
+            query_vector[term] = tf * idf_scores[term]
+
+    # --- Step 2: Calculate similarity scores for all documents ---
+    scores = []
+    # Enumerate through the document vectors to get both the doc_id and vector.
+    for doc_id, doc_vector in enumerate(document_vectors):
+        # Calculate the similarity between the query and the current document.
+        similarity = cosine_similarity(query_vector, doc_vector)
+        
+        # We only need to store documents that have a non-zero similarity.
+        if similarity > 0:
+            # Store the document ID and its similarity score.
+            scores.append((doc_id + 1, similarity))
+    
+    # --- Step 3: Sort the documents by similarity score ---
+    scores.sort(key=lambda x: x[1], reverse=True)
+    
+    return scores
+
