@@ -1,5 +1,78 @@
 import math
 from collections import Counter
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer, PorterStemmer
+
+# You only need to run these lines once to download the necessary NLTK packages.
+# try:
+#     stopwords.words('english')
+# except LookupError:
+#     nltk.download('stopwords')
+# try:
+#     nltk.data.find('tokenizers/punkt')
+# except LookupError:
+#     nltk.download('punkt')
+# try:
+#     nltk.data.find('corpora/wordnet')
+# except LookupError:
+#     nltk.download('wordnet')
+# -----------------------------------
+
+def preprocess_text(raw_docs, method='lemmatize'):
+    """
+    Takes a list of raw document strings and applies all preprocessing steps.
+
+    Args:
+        raw_docs (list of str): The list of unprocessed document texts.
+        method (str): The word reduction method to use. Can be 'lemmatize' (default)
+                      or 'stem'.
+
+    Returns:
+        A list of lists, where each inner list contains the processed tokens
+        of a single document.
+    """
+    # Initialize lists and objects for preprocessing.
+    processed_docs = []
+    
+    # 1. TOKENIZATION AND NORMALIZATION (LOWERCASE, PUNCTUATION REMOVAL)
+    # The tokenizer will split the document text into a list of words.
+    tokenizer = nltk.RegexpTokenizer(r'\w+')
+    
+    # 2. STOP WORD REMOVAL
+    # Load the set of English stop words. Using a set provides fast lookups.
+    stop_words = set(stopwords.words('english'))
+    
+    # 3. STEMMING / LEMMATIZATION
+    # Initialize the chosen processor.
+    if method == 'lemmatize':
+        processor = WordNetLemmatizer()
+        process_func = processor.lemmatize
+    elif method == 'stem':
+        processor = PorterStemmer()
+        process_func = processor.stem
+    else:
+        raise ValueError("Method must be 'lemmatize' or 'stem'")
+
+    # Process each document in the input list.
+    for doc in raw_docs:
+        # Lowercase the document text.
+        doc = doc.lower()
+        
+        # Use the tokenizer to get a list of alphabetic tokens.
+        tokens = tokenizer.tokenize(doc)
+        
+        # Filter out stop words from the token list.
+        filtered_tokens = [token for token in tokens if token not in stop_words]
+        
+        # Apply the chosen processing (lemmatization or stemming) to each token.
+        processed_tokens = [process_func(token) for token in filtered_tokens]
+        
+        # Add the final list of processed tokens to our main list.
+        processed_docs.append(processed_tokens)
+        
+    print(f"Finished preprocessing all documents using the '{method}' method.")
+    return processed_docs
 
 
 def cosine_similarity(vec1, vec2):
