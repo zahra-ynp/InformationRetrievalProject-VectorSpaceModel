@@ -71,7 +71,6 @@ def preprocess_text(raw_docs, method='lemmatize'):
         # Add the final list of processed tokens to our main list.
         processed_docs.append(processed_tokens)
         
-    print(f"Finished preprocessing all documents using the '{method}' method.")
     return processed_docs
 
 
