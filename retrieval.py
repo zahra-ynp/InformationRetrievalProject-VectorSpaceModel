@@ -3,6 +3,8 @@ from collections import Counter
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer, PorterStemmer
+import numpy as np 
+
 
 # You only need to run these lines once to download the necessary NLTK packages.
 # try:
@@ -74,6 +76,23 @@ def preprocess_text(raw_docs, method='lemmatize'):
     return processed_docs
 
 
+def create_query_vector(query_tokens, idf_scores):
+    """Creates a TF-IDF vector for a given list of query tokens."""
+    # Create a dictionary to hold the query's vector representation.
+    query_vector = {}
+    # Use collections.Counter to efficiently count the occurrences of each token
+    # in the query. This gives us the raw Term Frequency (TF).
+    tf_counts = Counter(query_tokens)
+    # Iterate through each unique term and its frequency in the query.
+    for term, tf in tf_counts.items():
+        # We only consider terms that exist in our main vocabulary (and thus have an IDF score).
+        if term in idf_scores:
+            # The weight of a term in the query vector is its local TF
+            # multiplied by its global IDF score.
+            query_vector[term] = tf * idf_scores[term]
+    return query_vector
+
+
 def cosine_similarity(vec1, vec2):
     """
     Computes the cosine similarity between two vectors.
@@ -98,23 +117,14 @@ def cosine_similarity(vec1, vec2):
         return 0.0
 
 
-def rank_documents(query_tokens, document_vectors, idf_scores):
+def rank_documents(query_vector, document_vectors):
     """
     Ranks documents against a pre-processed query using cosine similarity.
     We have a list of document vectors and a dictionary of IDF scores in artifacrt.
     Returns a list of tuples, where each tuple contains (document_id, similarity_score) in descending order of score.
     """
-    
-    # --- Step 1: Create the TF-IDF vector for the query ---
-    query_vector = {}
-    tf_counts = Counter(query_tokens)
-    
-    for term, tf in tf_counts.items():
-        if term in idf_scores:
-            # The query vector's weight for a term is its tf * the term's idf.
-            query_vector[term] = tf * idf_scores[term]
 
-    # --- Step 2: Calculate similarity scores for all documents ---
+    # --- Step 1: Calculate similarity scores for all documents ---
     scores = []
     # Enumerate through the document vectors to get both the doc_id and vector.
     for doc_id, doc_vector in enumerate(document_vectors):
@@ -126,8 +136,67 @@ def rank_documents(query_tokens, document_vectors, idf_scores):
             # Store the document ID and its similarity score.
             scores.append((doc_id + 1, similarity))
     
-    # --- Step 3: Sort the documents by similarity score ---
+    # --- Step 2: Sort the documents by similarity score ---
     scores.sort(key=lambda x: x[1], reverse=True)
     
     return scores
 
+
+
+def apply_rocchio_feedback(original_query_vector, relevant_doc_ids, non_relevant_doc_ids, document_vectors, alpha=1.0, beta=0.75, gamma=0.15):
+    """
+    Modifies a query vector using the Rocchio algorithm .
+
+    This function adjusts the original query vector by moving it closer to the
+    centroid of relevant documents and away from the centroid of non-relevant ones.
+    """
+    # For vector arithmetic, it's easier to work with dense numpy arrays.
+    # First, create a complete vocabulary list and a map from term to index.
+    vocab = list(document_vectors[0].keys())
+    vocab_map = {term: i for i, term in enumerate(vocab)}
+    
+    # Create a dense numpy array of zeros for the original query vector (q0).
+    q0 = np.zeros(len(vocab))
+    # Populate it with weights from the sparse original_query_vector.
+    for term, weight in original_query_vector.items():
+        if term in vocab_map:
+            q0[vocab_map[term]] = weight
+
+    # --- Calculate centroid of relevant documents ---
+    # The centroid is the average vector of all relevant documents.
+    if relevant_doc_ids:
+        # Sum the vectors of all specified relevant documents.
+        sum_relevant = np.zeros(len(vocab))
+        for doc_id in relevant_doc_ids:
+            for term, weight in document_vectors[doc_id].items():
+                 if term in vocab_map:
+                    sum_relevant[vocab_map[term]] += weight
+        # Divide by the number of relevant documents to get the average (centroid).
+        centroid_relevant = sum_relevant / len(relevant_doc_ids)
+    else:
+        centroid_relevant = np.zeros(len(vocab))
+
+    # --- Calculate centroid of non-relevant documents ---
+    # The centroid is the average vector of all non-relevant documents.
+    if non_relevant_doc_ids:
+        sum_non_relevant = np.zeros(len(vocab))
+        for doc_id in non_relevant_doc_ids:
+            for term, weight in document_vectors[doc_id].items():
+                if term in vocab_map:
+                    sum_non_relevant[vocab_map[term]] += weight
+        centroid_non_relevant = sum_non_relevant / len(non_relevant_doc_ids)
+    else:
+        centroid_non_relevant = np.zeros(len(vocab))
+
+    # --- Apply the Rocchio formula ---
+    # q_modified = alpha * q_original + beta * centroid_relevant - gamma * centroid_non_relevant
+    qm = alpha * q0 + beta * centroid_relevant - gamma * centroid_non_relevant
+
+    # أegative weights are not allowed, so we set them to 0.
+    qm[qm < 0] = 0
+
+    # Convert the dense numpy vector back to a sparse dictionary format for efficiency,
+    # only including terms with a non-zero weight.
+    modified_query_vector = {term: qm[i] for term, i in vocab_map.items() if qm[i] > 0}
+    
+    return modified_query_vector
