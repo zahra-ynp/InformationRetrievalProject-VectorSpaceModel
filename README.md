@@ -59,7 +59,7 @@ It processes the **Cranfield document collection**, represents documents and que
     
 ---
 
-### 🌐 `app_streamlit.py`
+### 🌐 `app.py`
 
 * Streamlit web interface:
 
