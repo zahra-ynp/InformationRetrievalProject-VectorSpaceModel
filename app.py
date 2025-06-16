@@ -1,15 +1,21 @@
+import streamlit as st
 import pickle
 
-# We will import the functions from the retrieval module we've been building
-from retrieval import rank_documents
-from retrieval import preprocess_text
+# Import the necessary functions from our custom 'retrieval.py' module.
+from retrieval import create_query_vector, rank_documents, preprocess_text, apply_rocchio_feedback
 
+# --- Caching Mechanism ---
+# @st.cache_resource tells Streamlit to run this function only once and store the
+# result in memory. On subsequent runs, it will use the cached result.
+@st.cache_resource
 def load_artifacts():
     """
-    Loads the processed data artifacts from disk.
+    Loads the processed data artifacts (vectors, IDF scores, raw text) from disk.
+    This function is cached so it only runs on the first page load.
     """
-    print("--- Loading system artifacts... ---")
+    print("--- Loading system artifacts (this should only run once)... ---")
     try:
+        # Open the saved artifact files.
         with open("./artifacts/cranfield_vectors.pkl", 'rb') as f:
             doc_vectors = pickle.load(f)
 
@@ -19,60 +25,94 @@ def load_artifacts():
         with open("./artifacts/cranfield_raw_docs.pkl", 'rb') as f:
             raw_docs = pickle.load(f)
             
-        print("Artifacts loaded successfully.\n")
+        print("Artifacts loaded successfully.")
         return doc_vectors, idf_scores, raw_docs
     except FileNotFoundError:
-        print("Error: Could not find artifact files.")
-        print("Please make sure you have run the '1_Index_Builder.ipynb' notebook to generate them.")
+        # If the files aren't found, display an error message in the app.
+        st.error("Error: Could not find artifact files. Please run '1_Index_Builder.ipynb' first.")
         return None, None, None
 
 def main():
     """
-    The main function to run the application.
+    The main function to define the structure and logic of the Streamlit web application.
     """
-    # Load all the necessary data structures into memory
+    # --- Page Configuration ---
+    st.set_page_config(
+        page_title="Vector Space Model Search Engine",
+        page_icon="🔎",
+        layout="wide"
+    )
+
+    # --- Load Data ---
     document_vectors, idf_scores, raw_documents = load_artifacts()
 
-    # If loading failed, exit the program
+    # If loading failed, stop the application gracefully.
     if document_vectors is None:
         return
 
-    # Start the interactive loop
-    while True:
-        # Get user input from the command line
-        query = input("Enter your query (or type 'exit' to quit):\n> ")
+    # --- UI Elements ---
+    st.title("🔎 Vector Space Model Search Engine")
+    st.markdown("This app uses a Vector Space Model with TF-IDF weighting to retrieve documents from the Cranfield collection.")
 
-        # Check for the exit command
-        if query.lower() == 'exit':
-            break
+    # Create a text input box for the user to enter their query.
+    query = st.text_input("Enter your query:", "")
+    
+    # Add a checkbox to allow the user to enable pseudo-relevance feedback.
+    use_feedback = st.checkbox("Enable Pseudo-Relevance Feedback (assumes top 3 are relevant)")
 
-        # --- Process the query ---
-        # 1. Put the query in a list to match the preprocessor's expected input
-        query_as_list = [query]
-        # 2. Call the preprocessor function
-        processed_query_list = preprocess_text(query_as_list)
-        # 3. Get the list of tokens from the result
-        query_tokens = processed_query_list[0]
+    # --- Search Logic ---
+    # This block of code only runs if the user has typed something into the input box.
+    if query:
+        # 1. Preprocess the user's query
+        query_tokens = preprocess_text([query])[0]
         
-        # --- Rank documents ---
-        # Get the ranked list of (doc_id, score) tuples
-        ranked_results = rank_documents(query_tokens, document_vectors, idf_scores)
+        # 2. Create the initial TF-IDF vector for the query.
+        query_vector = create_query_vector(query_tokens, idf_scores)
+        
+        # --- Run Search and Display Results ---
+        if use_feedback:
+            # --- FEEDBACK PATH ---
+            # a. Get initial ranking to find top documents
+            initial_results = rank_documents(query_vector, document_vectors)
+            
+            # b. Get the IDs of the top 3 documents to use for feedback
+            # We subtract 1 to convert from 1-based doc ID to 0-based list index
+            assumed_relevant_ids = [doc_id - 1 for doc_id, score in initial_results[:3]]
+            
+            # c. Apply the Rocchio formula to create a new, improved query vector
+            if assumed_relevant_ids:
+                modified_query_vector = apply_rocchio_feedback(
+                    original_query_vector=query_vector,
+                    relevant_doc_ids=assumed_relevant_ids,
+                    non_relevant_doc_ids=[], # No non-relevant docs in pseudo-feedback
+                    document_vectors=document_vectors,
+                    alpha=1.0, beta=0.75, gamma=0.0 # Gamma is 0 for pseudo-feedback
+                )
+                
+                # d. Re-rank all documents using the new, modified query vector
+                ranked_results = rank_documents(modified_query_vector, document_vectors)
+                st.subheader(f"Top 10 Results (after feedback) for: \"{query}\"")
+            else:
+                # If the initial search returned no results, we can't do feedback
+                ranked_results = []
+                st.subheader(f"Top 10 Results for: \"{query}\"")
 
-        # --- Display the results ---
-        print(f"\n--- Top 5 Results for '{query}' ---")
-        if not ranked_results:
-            print("No matching documents found.")
         else:
-            # Use enumerate to get the rank number, starting from 1
-            for rank, (doc_id, score) in enumerate(ranked_results[:5], 1):
-                print(f"\nRank {rank}: Document ID: {doc_id} (Score: {score:.4f})")
-                # Retrieve and print the first 200 characters of the raw document
-                # doc_id is 1-based, so we access the list with doc_id - 1
-                doc_text = raw_documents[doc_id - 1]
-                print(f"   Preview: {doc_text[:200]}...")
-        
-        print("\n" + "="*50 + "\n")
+            # --- NO FEEDBACK PATH ---
+            # Rank all documents against the original query vector
+            ranked_results = rank_documents(query_vector, document_vectors)
+            st.subheader(f"Top 10 Results for: \"{query}\"")
 
+        # --- Display Results ---
+        if not ranked_results:
+            st.warning("No matching documents found.")
+        else:
+            # Loop through the top 10 results and display them in expanders.
+            for rank, (doc_id, score) in enumerate(ranked_results[:10], 1):
+                with st.expander(f"**Rank {rank}: Document {doc_id}** (Score: {score:.4f})"):
+                    # Retrieve and display the full text of the document
+                    doc_text = raw_documents[doc_id - 1]
+                    st.write(doc_text)
 
 if __name__ == "__main__":
     main()
