@@ -32,7 +32,8 @@ It processes the **Cranfield document collection**, represents documents and que
 * Core engine for:
 
   * Preprocessing
-  * TF-IDF vectorization
+  * Query Vectorization
+  * Document Ranking
   * Cosine similarity ranking
   * Rocchio pseudo-relevance feedback
 
