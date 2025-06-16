@@ -75,10 +75,11 @@ It processes the **Cranfield document collection**, represents documents and que
 
 Clone the repository and install required libraries:
 
-```bash
-git clone [(https://github.com/zahra-ynp/InformationRetrievalProject-VectorSpaceModel.git)]
-pip install -r requirements.txt
-```
+<pre> 
+ ```bash
+ git clone https://github.com/zahra-ynp/InformationRetrievalProject-VectorSpaceModel.git 
+ pip install -r requirements.txt 
+ ``` </pre>
 
 ---
 
