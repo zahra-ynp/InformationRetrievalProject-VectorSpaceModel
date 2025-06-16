@@ -107,7 +107,9 @@ A browser window will open with the search engine interface.
 ## 📈 Example Query
 
 Search for: what problems of heat conduction in composite slabs have been solved so far
+
 Toggle feedback: ✅
+
 See a ranked list of relevant research abstracts!
 
 ---
