@@ -75,11 +75,10 @@ It processes the **Cranfield document collection**, represents documents and que
 
 Clone the repository and install required libraries:
 
-<pre> 
  ```bash
  git clone https://github.com/zahra-ynp/InformationRetrievalProject-VectorSpaceModel.git 
  pip install -r requirements.txt 
- ``` </pre>
+ ```
 
 ---
 
@@ -107,7 +106,7 @@ A browser window will open with the search engine interface.
 
 ## 📈 Example Query
 
-Search for: `what problems of heat conduction in composite slabs have been solved so far`
+Search for: what problems of heat conduction in composite slabs have been solved so far
 Toggle feedback: ✅
 See a ranked list of relevant research abstracts!
 
@@ -115,4 +114,4 @@ See a ranked list of relevant research abstracts!
 
 ## 📑 License
 
-This project is developed for academic purposes under the [MIT License](LICENSE).
+This project is developed for academic purposes under the [MIT License].
