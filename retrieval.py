@@ -116,15 +116,14 @@ def rank_documents(query_vector, document_vectors):
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores
 
-def apply_rocchio_feedback(original_query_vector, relevant_doc_ids, non_relevant_doc_ids, document_vectors, alpha=1.0, beta=0.75, gamma=0.15):
+
+def apply_rocchio_feedback(original_query_vector, relevant_doc_ids, non_relevant_doc_ids, document_vectors, idf_scores, alpha=1.0, beta=0.75, gamma=0.15):
     """
     Modifies a query vector using the Rocchio algorithm.
-    
-    This function moves the query vector towards relevant documents and away from
-    non-relevant ones to improve retrieval performance.
     """
-    # First, create a consistent vocabulary and a term-to-index mapping.
-    vocab = list(document_vectors[0].keys())
+    # Create the vocabulary from the keys of the idf_scores dictionary,
+    # which contains every term in the entire collection.
+    vocab = list(idf_scores.keys())
     vocab_map = {term: i for i, term in enumerate(vocab)}
     
     # Convert the sparse original query vector (q0) to a dense numpy array.
@@ -133,7 +132,7 @@ def apply_rocchio_feedback(original_query_vector, relevant_doc_ids, non_relevant
         if term in vocab_map:
             q0[vocab_map[term]] = weight
 
-    # Calculate the centroid (average vector) of all relevant documents.
+    # Calculate the centroid of all relevant documents.
     if relevant_doc_ids:
         sum_relevant = np.zeros(len(vocab))
         for doc_id in relevant_doc_ids:
@@ -141,7 +140,7 @@ def apply_rocchio_feedback(original_query_vector, relevant_doc_ids, non_relevant
                  if term in vocab_map:
                     sum_relevant[vocab_map[term]] += weight
         centroid_relevant = sum_relevant / len(relevant_doc_ids)
-    else: # If no relevant docs are provided, the centroid is a zero vector.
+    else:
         centroid_relevant = np.zeros(len(vocab))
 
     # Calculate the centroid of all non-relevant documents.
@@ -152,14 +151,14 @@ def apply_rocchio_feedback(original_query_vector, relevant_doc_ids, non_relevant
                 if term in vocab_map:
                     sum_non_relevant[vocab_map[term]] += weight
         centroid_non_relevant = sum_non_relevant / len(non_relevant_doc_ids)
-    else: # If no non-relevant docs, the centroid is a zero vector.
+    else:
         centroid_non_relevant = np.zeros(len(vocab))
 
     # Apply the Rocchio formula to get the modified query vector (qm).
     qm = alpha * q0 + beta * centroid_relevant - gamma * centroid_non_relevant
-    # set any negative weights to 0.
     qm[qm < 0] = 0
-    # Convert the dense numpy vector back to a sparse dictionary for efficiency.
+    
+    # Convert the dense numpy vector back to a sparse dictionary.
     modified_query_vector = {term: qm[i] for term, i in vocab_map.items() if qm[i] > 0}
     
     return modified_query_vector
