@@ -1,6 +1,6 @@
 import math
 import nltk
-from collections import Counter, defaultdict
+from collections import Counter
 import numpy as np
 
 # --- NLTK Data Downloads ---
@@ -116,6 +116,26 @@ def rank_documents(query_vector, document_vectors):
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores
 
+def rank_documents_normalized(query_vector, document_vectors):
+    """
+    Ranks documents when both query and document vectors are pre-normalized.
+    The cosine similarity is simply their dot product.
+    """
+    scores = []
+    # Loop through all the pre-normalized document vectors
+    for doc_id, doc_vector in enumerate(document_vectors):
+        
+        # The score is just the dot product between the two sparse vectors
+        dot_product = sum(query_vector.get(term, 0) * weight for term, weight in doc_vector.items())
+        
+        if dot_product > 0:
+            # Append the 1-based doc ID and the final score
+            scores.append((doc_id + 1, dot_product))
+    
+    # Sort by score in descending order
+    scores.sort(key=lambda x: x[1], reverse=True)
+    return scores
+
 
 def apply_rocchio_feedback(original_query_vector, relevant_doc_ids, non_relevant_doc_ids, document_vectors, idf_scores, alpha=1.0, beta=0.75, gamma=0.15):
     """
@@ -162,3 +182,39 @@ def apply_rocchio_feedback(original_query_vector, relevant_doc_ids, non_relevant
     modified_query_vector = {term: qm[i] for term, i in vocab_map.items() if qm[i] > 0}
     
     return modified_query_vector
+
+
+def create_ltc_query_vector(query_tokens, idf_scores):
+    """
+    Creates a query vector using the ltc (log-tf, idf, cosine) scheme.
+    """
+    # This will hold the weights before normalization
+    query_vector_unnormalized = {}
+    
+    # Use Counter to get the raw term frequency (tf)
+    tf_counts = Counter(query_tokens)
+    
+    # This will be used to calculate the vector's length for normalization
+    magnitude_squared = 0.0
+
+    # Calculate Logarithmic TF-IDF (lt) weights
+    for term, tf in tf_counts.items():
+        if term in idf_scores:
+            # The weight is (1 + log(tf)) * idf
+            weight = (1 + math.log10(tf)) * idf_scores[term]
+            query_vector_unnormalized[term] = weight
+            
+            # Add the square of this weight to our running total
+            magnitude_squared += weight**2
+    
+    # Cosine Normalization (c)
+    magnitude = math.sqrt(magnitude_squared)
+    
+    # This will hold the final, normalized query vector
+    query_vector_normalized = {}
+    if magnitude > 0:
+        # Divide each term's weight by the vector's magnitude
+        for term, weight in query_vector_unnormalized.items():
+            query_vector_normalized[term] = weight / magnitude
+
+    return query_vector_normalized
