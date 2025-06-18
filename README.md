@@ -44,7 +44,7 @@ It processes the **Cranfield document collection**, represents documents and que
 * One-time setup to:
 
   * Load and preprocess documents
-  * Tokenize, lemmatize, and remove stop-words
+  * Tokenize, stemmer, and remove stop-words
   * Compute and save TF-IDF vectors (`.pkl` files)
 
 ---
@@ -116,4 +116,4 @@ See a ranked list of relevant research abstracts!
 
 ## 📑 License
 
-This project is developed for academic purposes under the [MIT License].
+This project is developed for academic purposes under the MIT License.
