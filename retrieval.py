@@ -32,7 +32,7 @@ def download_nltk_data():
 download_nltk_data()
 
 from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
+from nltk.stem import PorterStemmer
 
 
 def preprocess_text(raw_docs):
@@ -45,8 +45,8 @@ def preprocess_text(raw_docs):
     tokenizer = nltk.RegexpTokenizer(r'\w+')
     # Load the set of English stop words for fast lookup.
     stop_words = set(stopwords.words('english'))
-    # Initialize the lemmatizer inside the function to avoid caching issues with Streamlit.
-    lemmatizer = WordNetLemmatizer()
+    # Initialize the stemmer inside the function to avoid caching issues with Streamlit.
+    stemmer = PorterStemmer()
 
     # Process each raw document string in the input list.
     for doc in raw_docs:
@@ -57,9 +57,9 @@ def preprocess_text(raw_docs):
         # Remove any token that is a stop word.
         filtered_tokens = [token for token in tokens if token not in stop_words]
         # Reduce each token to its dictionary root form (lemma).
-        lemmatized_tokens = [lemmatizer.lemmatize(token) for token in filtered_tokens]
+        stemmed_tokens = [stemmer.stem(token) for token in filtered_tokens]
         # Add the final list of tokens to our main list.
-        processed_docs.append(lemmatized_tokens)
+        processed_docs.append(stemmed_tokens)
         
     return processed_docs
 
