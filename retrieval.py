@@ -56,7 +56,7 @@ def preprocess_text(raw_docs):
         tokens = tokenizer.tokenize(doc_lower)
         # Remove any token that is a stop word.
         filtered_tokens = [token for token in tokens if token not in stop_words]
-        # Reduce each token to its dictionary root form (lemma).
+        # use the Porter Stemmer to stem each token.
         stemmed_tokens = [stemmer.stem(token) for token in filtered_tokens]
         # Add the final list of tokens to our main list.
         processed_docs.append(stemmed_tokens)
@@ -98,6 +98,7 @@ def create_query_vector(query_tokens, idf_scores):
             query_vector[term] = tf * idf_scores[term]
     return query_vector
 
+
 def rank_documents(query_vector, document_vectors):
     """
     Ranks documents against a query vector using cosine similarity.
@@ -116,105 +117,76 @@ def rank_documents(query_vector, document_vectors):
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores
 
-def rank_documents_normalized(query_vector, document_vectors):
-    """
-    Ranks documents when both query and document vectors are pre-normalized.
-    The cosine similarity is simply their dot product.
-    """
-    scores = []
-    # Loop through all the pre-normalized document vectors
-    for doc_id, doc_vector in enumerate(document_vectors):
-        
-        # The score is just the dot product between the two sparse vectors
-        dot_product = sum(query_vector.get(term, 0) * weight for term, weight in doc_vector.items())
-        
-        if dot_product > 0:
-            # Append the 1-based doc ID and the final score
-            scores.append((doc_id + 1, dot_product))
-    
-    # Sort by score in descending order
-    scores.sort(key=lambda x: x[1], reverse=True)
-    return scores
-
 
 def apply_rocchio_feedback(original_query_vector, relevant_doc_ids, non_relevant_doc_ids, document_vectors, idf_scores, alpha=1.0, beta=0.75, gamma=0.15):
     """
     Modifies a query vector using the Rocchio algorithm.
     """
-    # Create the vocabulary from the keys of the idf_scores dictionary,
-    # which contains every term in the entire collection.
+    # Create the full vocabulary from the keys of the idf_scores dictionary.
+    # This ensures we have every term that exists in the entire collection.
     vocab = list(idf_scores.keys())
+
+    # Create a mapping from each term to a unique index (0, 1, 2, ...).
+    # This gives each term a specific position in our new dense vectors.
     vocab_map = {term: i for i, term in enumerate(vocab)}
-    
+
     # Convert the sparse original query vector (q0) to a dense numpy array.
+    # First, create a giant vector of all zeros.
     q0 = np.zeros(len(vocab))
+    # Then, loop through the original sparse vector (dictionary) and place its
+    # weights into the correct positions in the new dense vector.
     for term, weight in original_query_vector.items():
         if term in vocab_map:
             q0[vocab_map[term]] = weight
 
-    # Calculate the centroid of all relevant documents.
     if relevant_doc_ids:
+        # Create another giant vector of zeros to act as an accumulator.
         sum_relevant = np.zeros(len(vocab))
+        
+        # Loop through each provided relevant document ID.
         for doc_id in relevant_doc_ids:
-            for term, weight in document_vectors[doc_id].items():
-                 if term in vocab_map:
-                    sum_relevant[vocab_map[term]] += weight
-        centroid_relevant = sum_relevant / len(relevant_doc_ids)
-    else:
-        centroid_relevant = np.zeros(len(vocab))
-
-    # Calculate the centroid of all non-relevant documents.
-    if non_relevant_doc_ids:
-        sum_non_relevant = np.zeros(len(vocab))
-        for doc_id in non_relevant_doc_ids:
+            # For each relevant document, loop through its terms and weights.
             for term, weight in document_vectors[doc_id].items():
                 if term in vocab_map:
+                    # Add the weight of the term to the correct position in our accumulator.
+                    sum_relevant[vocab_map[term]] += weight
+                    
+        # Divide the sum of all vectors by the number of documents to get the average.
+        centroid_relevant = sum_relevant / len(relevant_doc_ids)
+    else:
+        # If no relevant documents were given, the centroid is just a vector of zeros.
+        centroid_relevant = np.zeros(len(vocab))
+
+
+    # This part only runs if the user provided a list of non-relevant document IDs.
+    if non_relevant_doc_ids:
+        # Create a vector of zeros to accumulate the weights.
+        sum_non_relevant = np.zeros(len(vocab))
+        
+        # Loop through each provided non-relevant document ID.
+        for doc_id in non_relevant_doc_ids:
+            # For each non-relevant document, loop through its terms and weights.
+            for term, weight in document_vectors[doc_id].items():
+                if term in vocab_map:
+                    # Add the weight of the term to our accumulator.
                     sum_non_relevant[vocab_map[term]] += weight
+                    
+        # Divide the sum by the number of non-relevant documents to get the average vector.
         centroid_non_relevant = sum_non_relevant / len(non_relevant_doc_ids)
     else:
+        # If no non-relevant documents were given, the centroid is a vector of zeros.
         centroid_non_relevant = np.zeros(len(vocab))
 
-    # Apply the Rocchio formula to get the modified query vector (qm).
+
+    # Apply the formula using the dense numpy vectors we created.
     qm = alpha * q0 + beta * centroid_relevant - gamma * centroid_non_relevant
+
+    # This line finds any negative values in the new vector and sets them to 0.
     qm[qm < 0] = 0
-    
-    # Convert the dense numpy vector back to a sparse dictionary.
+
+    # This creates a new dictionary containing only the terms that have a
+    # final weight greater than 0, making it efficient again.
     modified_query_vector = {term: qm[i] for term, i in vocab_map.items() if qm[i] > 0}
-    
+        
     return modified_query_vector
 
-
-def create_ltc_query_vector(query_tokens, idf_scores):
-    """
-    Creates a query vector using the ltc (log-tf, idf, cosine) scheme.
-    """
-    # This will hold the weights before normalization
-    query_vector_unnormalized = {}
-    
-    # Use Counter to get the raw term frequency (tf)
-    tf_counts = Counter(query_tokens)
-    
-    # This will be used to calculate the vector's length for normalization
-    magnitude_squared = 0.0
-
-    # Calculate Logarithmic TF-IDF (lt) weights
-    for term, tf in tf_counts.items():
-        if term in idf_scores:
-            # The weight is (1 + log(tf)) * idf
-            weight = (1 + math.log10(tf)) * idf_scores[term]
-            query_vector_unnormalized[term] = weight
-            
-            # Add the square of this weight to our running total
-            magnitude_squared += weight**2
-    
-    # Cosine Normalization (c)
-    magnitude = math.sqrt(magnitude_squared)
-    
-    # This will hold the final, normalized query vector
-    query_vector_normalized = {}
-    if magnitude > 0:
-        # Divide each term's weight by the vector's magnitude
-        for term, weight in query_vector_unnormalized.items():
-            query_vector_normalized[term] = weight / magnitude
-
-    return query_vector_normalized
