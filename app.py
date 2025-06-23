@@ -86,8 +86,10 @@ def main():
                     relevant_doc_ids=assumed_relevant_ids,
                     non_relevant_doc_ids=[], # No non-relevant docs in pseudo-feedback
                     document_vectors=document_vectors,
+                    idf_scores=idf_scores,
                     alpha=1.0, beta=0.75, gamma=0.0 # Gamma is 0 for pseudo-feedback
                 )
+   
                 
                 # d. Re-rank all documents using the new, modified query vector
                 ranked_results = rank_documents(modified_query_vector, document_vectors)
